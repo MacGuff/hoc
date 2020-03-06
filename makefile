@@ -1,9 +1,13 @@
-hoc1: hoc.o
-	cc hoc.o -o hoc1
-hoc.o: hoc.y
-	yacc hoc.y
-	cc -c y.tab.c
-	mv y.tab.o hoc.o
+YFLAGS = -d
+OBJS = hoc.o init.o symbol.o
+
+hoc3: $(OBJS)
+	cc $(OBJS) -lm -o hoc3
+hoc.o: hoc.h
+
+init.o symbol.o: hoc.h y.tab.h
+
+y.tab.h: hoc.y
 
 clean:
-	rm y.tab.c *.o
+	rm -f *.tab.[ch] *.o

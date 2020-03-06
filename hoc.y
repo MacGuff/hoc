@@ -1,27 +1,34 @@
 %{
-double mem[26];
+#include "hoc.h"
 %}
 %union {
     double val;
-    int index;
+    symbol *sym;
 }
 %token <val> NUMBER
-%token <index> VAR
+%token <sym> VAR BLTIN UNDEF
 %token NEWLINE
-%type <val> expr
+%type <val> expr asgn
 %right '='
 %left '+' '-'
 %left '*' '/'
 %left UNARYMINUS
+%right '^'
 %%
 list:   /**/
         | list NEWLINE
+        | list asgn NEWLINE
         | list expr NEWLINE { printf("\t%.8g\n", $2); }
         | list error NEWLINE { yyerrok; }
         ;
+asgn:     VAR '=' expr { $$ = $1->u.val=$3; $1->type = VAR; }
+        ;
 expr:     NUMBER { $$ = $1; }
-        | VAR    { $$ = mem[$1]; }
-        | VAR '=' expr { $$ = mem[$1] = $3; }
+        | VAR    { if ($1->type == UNDEF)
+                        err("undefined variable");
+                    $$ = $1->u.val; }
+        | asgn
+        | BLTIN '(' expr ')' { $$ = (*($1->u.ptr))($3); }
         | expr '+' expr { $$ = $1 + $3; }
         | expr '-' expr { $$ = $1 - $3; }
         | expr '*' expr { $$ = $1 * $3; }
@@ -49,6 +56,7 @@ int lineno = 1;
 int main(int argc, char *argv[])
 {
     progname = argv[0];
+    init();
     setjmp(begin);
     signal(SIGFPE, fpecatch);
     yyparse();
@@ -69,14 +77,24 @@ int yylex()
         return NUMBER;
     }
 
-    if (islower(c)) {
-        yylval.index = c -'a';
-        return VAR;
+    if (isalpha(c)) {
+        symbol *s;
+        char sbuf[100], *p = sbuf;
+        do {
+            *p++ = c;
+        } while ((c=getchar()) != EOF && isalnum(c));
+
+        ungetc(c, stdin);
+        *p = '\0';
+        if ((s = lookup(sbuf)) == NULL)
+            s = install(sbuf, UNDEF, 0.0);
+        yylval.sym = s;
+        return s->type == UNDEF ? VAR : s->type;
     }
     if (c == '\n') {
         lineno++;
     }
-            if (c == '\n' || c == ';')
+    if (c == '\n' || c == ';')
         return NEWLINE;
     return c;
 }
