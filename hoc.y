@@ -1,33 +1,56 @@
 %{
-#define YYSTYPE double
+double mem[26];
 %}
-
-%token NUMBER
+%union {
+    double val;
+    int index;
+}
+%token <val> NUMBER
+%token <index> VAR
+%token NEWLINE
+%type <val> expr
+%right '='
 %left '+' '-'
 %left '*' '/'
+%left UNARYMINUS
 %%
-list:
-        | list '\n'
-        | list expr '\n' { printf("\t%.8g\n", $2); }
+list:   /**/
+        | list NEWLINE
+        | list expr NEWLINE { printf("\t%.8g\n", $2); }
+        | list error NEWLINE { yyerrok; }
         ;
 expr:     NUMBER { $$ = $1; }
+        | VAR    { $$ = mem[$1]; }
+        | VAR '=' expr { $$ = mem[$1] = $3; }
         | expr '+' expr { $$ = $1 + $3; }
         | expr '-' expr { $$ = $1 - $3; }
         | expr '*' expr { $$ = $1 * $3; }
-        | expr '/' expr { $$ = $1 / $3; }
+        | expr '/' expr
+            {
+                if ($3 == 0.0)
+                    err("div by zero");
+                $$ = $1 / $3; }
         | '(' expr ')' { $$ = $2;}
+        | '-' expr %prec UNARYMINUS { $$ = -$2; }
         ;
 %%
 
 #include <stdio.h>
 #include <ctype.h>
+#include <signal.h>
+#include <setjmp.h>
 
+void fpecatch(int);
+
+jmp_buf begin;
 char *progname;
-int lineno = 0;
+int lineno = 1;
 
 int main(int argc, char *argv[])
 {
     progname = argv[0];
+    setjmp(begin);
+    signal(SIGFPE, fpecatch);
     yyparse();
     return 0;
 }
@@ -42,12 +65,19 @@ int yylex()
         return 0;
     if (c == '.' || isdigit(c)) {
         ungetc(c, stdin);
-        scanf("%lf", &yylval);
+        scanf("%lf", &yylval.val);
         return NUMBER;
     }
 
-    if (c == '\n')
+    if (islower(c)) {
+        yylval.index = c -'a';
+        return VAR;
+    }
+    if (c == '\n') {
         lineno++;
+    }
+            if (c == '\n' || c == ';')
+        return NEWLINE;
     return c;
 }
 
@@ -55,4 +85,14 @@ int yylex()
 void yyerror(char *s)
 {
     fprintf(stderr, "%s: %s, near line: %d\n", progname, s, lineno);
+}
+
+void err(char *s)
+{
+    fprintf(stderr, "%s: %s, near line: %d\n", progname, s, lineno);
+    longjmp(begin, 0);
+}
+void fpecatch(int u)
+{
+    err("float point exception");
 }
